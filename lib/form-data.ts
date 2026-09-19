@@ -14,3 +14,8 @@ export function listValue(data: Record<string, unknown>, key: string) {
   const value = data[key];
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
+
+export function objectListValue(data: Record<string, unknown>, key: string) {
+  const value = data[key];
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
+}

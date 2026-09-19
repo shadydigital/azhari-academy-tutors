@@ -206,6 +206,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 .field textarea { min-height: 120px; resize: vertical; line-height: 1.65; }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--green-700); box-shadow: 0 0 0 4px rgba(29, 112, 84, .1); }
+.field .verified-input { border-color: #9bc8b6; color: var(--green-800); background: #f2f8f5; cursor: default; }
 .field-hint { color: var(--muted); font-size: 11px; line-height: 1.55; }
 .choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .choice {
@@ -222,6 +223,18 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 .choice:has(input:checked) { border-color: var(--green-700); background: #f2f8f5; }
 .choice input { width: 16px; height: 16px; accent-color: var(--green-700); }
+.language-list, .availability-list, .links-list { display: grid; gap: 10px; }
+.language-row { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(180px, .7fr); gap: 10px; align-items: center; }
+.language-row:has(input[aria-label]) { grid-template-columns: minmax(190px, 1fr) minmax(160px, .7fr) minmax(160px, .7fr); }
+.language-row > select, .language-row > input, .availability-row input, .link-row input, .link-row select { min-height: 46px; padding: 10px 12px; border: 1px solid #ced8d3; border-radius: 10px; background: white; }
+.availability-row { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(120px, .65fr) minmax(120px, .65fr); gap: 10px; align-items: end; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: #fafcfb; }
+.availability-row.selected { border-color: #9bc8b6; background: #f2f8f5; }
+.availability-row > label:not(.choice) { display: grid; gap: 5px; color: var(--muted); font-size: 10px; }
+.availability-row .choice { border: 0; background: transparent; }
+.availability-row input:disabled { opacity: .45; cursor: not-allowed; }
+.link-row { display: grid; grid-template-columns: minmax(160px, .65fr) minmax(240px, 1.35fr) auto; gap: 10px; }
+.remove-link { border: 0; color: var(--danger); background: transparent; cursor: pointer; font-weight: 700; }
+.add-link { justify-self: start; }
 .form-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 34px; padding-top: 22px; border-top: 1px solid var(--line); }
 .form-message { margin: 20px 0 0; padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; }
 .form-message.error { color: #7a2727; background: #fae9e9; }
@@ -262,6 +275,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .fields { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
   .choice-grid { grid-template-columns: 1fr; }
+  .language-row, .language-row:has(input[aria-label]), .availability-row, .link-row { grid-template-columns: 1fr; }
   .form-actions { flex-wrap: wrap; }
   .form-actions .button { flex: 1; }
 }
@@ -306,7 +320,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .interview-list small { margin-top: 4px; color: var(--muted); font-size: 11px; }
 .interview-list time { color: var(--muted); font-size: 12px; }
 .empty-state { margin: 18px 0; color: var(--muted); text-align: center; }
-.admin-filters { display: grid; grid-template-columns: minmax(220px, 1fr) 230px auto; gap: 10px; margin-bottom: 20px; }
+.admin-filters { display: grid; grid-template-columns: minmax(220px, 1.3fr) repeat(4, minmax(150px, .8fr)) auto; gap: 10px; margin-bottom: 20px; }
 .table-wrap { overflow-x: auto; }
 .applicants-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .applicants-table th { padding: 11px 12px; border-bottom: 1px solid #dfe6e2; color: var(--muted); font-size: 10px; letter-spacing: .08em; text-align: start; text-transform: uppercase; }
@@ -359,6 +373,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .applicant-grid { grid-template-columns: 1fr; }
   .applicant-aside { position: static; }
+  .admin-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 680px) {

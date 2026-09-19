@@ -2,13 +2,21 @@
 
 import { useMemo, useState } from "react";
 import type { Locale } from "@/lib/i18n";
+import {
+  countryOptions, EGYPT_GOVERNORATES, EGYPT_UNIVERSITIES, LANGUAGE_LEVELS,
+  optionLabel, TEACHING_LANGUAGES, timeZoneOptions, WEEKDAYS
+} from "@/lib/application-options";
 
 type FormCopy = {
   [key: string]: string | string[];
   sections: string[];
 };
 
-type Draft = {
+type LanguageSkill = { language: string; level: string; otherLanguage?: string };
+type AvailabilitySlot = { day: string; enabled: boolean; from: string; to: string };
+type ApplicationLink = { type: string; url: string };
+
+export type Draft = {
   email: string;
   fullNameEnglish: string;
   fullNameArabic: string;
@@ -20,6 +28,7 @@ type Draft = {
   over18: boolean;
   azharStatus: string;
   institution: string;
+  institutionOther: string;
   faculty: string;
   qualification: string;
   graduationYear: string;
@@ -27,50 +36,53 @@ type Draft = {
   ijazahDetails: string;
   specializations: string[];
   ageGroups: string[];
-  teachingLanguages: string;
+  teachingLanguages: LanguageSkill[];
   yearsExperience: string;
   onlineExperience: string;
   previousWork: string;
   motivation: string;
   childScenario: string;
   device: string;
+  deviceOther: string;
   internet: string;
+  internetBackup: string;
   teachingSpace: boolean;
   videoTools: string[];
   weeklyHours: string;
-  availability: string;
+  availability: AvailabilitySlot[];
   earliestStart: string;
   videoUrl: string;
+  links: ApplicationLink[];
   consentAccuracy: boolean;
   consentPrivacy: boolean;
 };
 
 const initialDraft: Draft = {
   email: "", fullNameEnglish: "", fullNameArabic: "", phone: "", country: "", city: "", timezone: "",
-  gender: "", over18: false, azharStatus: "", institution: "", faculty: "", qualification: "", graduationYear: "",
-  hasIjazah: "", ijazahDetails: "", specializations: [], ageGroups: [], teachingLanguages: "", yearsExperience: "",
-  onlineExperience: "", previousWork: "", motivation: "", childScenario: "", device: "", internet: "",
-  teachingSpace: false, videoTools: [], weeklyHours: "", availability: "", earliestStart: "", videoUrl: "",
+  gender: "", over18: false, azharStatus: "", institution: "", institutionOther: "", faculty: "", qualification: "", graduationYear: "",
+  hasIjazah: "", ijazahDetails: "", specializations: [], ageGroups: [], teachingLanguages: [], yearsExperience: "",
+  onlineExperience: "", previousWork: "", motivation: "", childScenario: "", device: "", deviceOther: "", internet: "", internetBackup: "",
+  teachingSpace: false, videoTools: [], weeklyHours: "", availability: WEEKDAYS.map(({ value }) => ({ day: value, enabled: false, from: "", to: "" })), earliestStart: "", videoUrl: "", links: [],
   consentAccuracy: false, consentPrivacy: false
 };
 
 const labels = {
   en: {
     fullNameEnglish: "Full name in English", fullNameArabic: "Full name in Arabic", phone: "WhatsApp / mobile number",
-    country: "Country", city: "City", timezone: "Time zone", gender: "Gender", male: "Male", female: "Female",
+    country: "Country", city: "Governorate / city", timezone: "Time zone", gender: "Gender", male: "Male", female: "Female",
     over18: "I confirm that I am at least 18 years old", azharStatus: "Al-Azhar education", graduate: "Graduate",
-    student: "Current student", none: "Other educational background", institution: "University or institute",
+    student: "Current student", none: "Other educational background", institution: "University or institute", institutionOther: "University or institute name",
     faculty: "Faculty and department", qualification: "Degree or qualification", graduationYear: "Graduation year",
     hasIjazah: "Do you hold a Quran ijazah?", yes: "Yes", no: "No", ijazahDetails: "Ijazah, narration, and granting sheikh",
     specializations: "Teaching specializations", quran: "Quran recitation", tajweed: "Tajweed", memorization: "Memorization",
     qiraat: "Qira'at / Ijazah", noor: "Noor Al-Bayan", arabic: "Arabic for non-native speakers", islamic: "Islamic studies",
     ageGroups: "Learner age groups", children: "Children", teens: "Teenagers", adults: "Adults",
-    teachingLanguages: "Languages you can teach in", yearsExperience: "Total years of teaching experience",
+    teachingLanguages: "Languages you can teach in", languageLevel: "Proficiency level", otherLanguage: "Language name", yearsExperience: "Total years of teaching experience",
     onlineExperience: "Describe your online teaching experience", previousWork: "Previous academies or teaching work",
     motivation: "Why would you like to teach with Azhari Academy?", childScenario: "How do you help a child who loses focus?",
-    device: "Primary teaching device", internet: "Internet connection and backup plan", teachingSpace: "I have a quiet, suitable teaching space",
+    device: "Primary teaching device", deviceOther: "Device details", internet: "Primary internet connection", internetBackup: "Backup internet connection", teachingSpace: "I have a quiet, suitable teaching space",
     videoTools: "Online tools you can use", weeklyHours: "Available teaching hours per week", availability: "Available days and time ranges",
-    earliestStart: "Earliest start date", videoUrl: "Introductory video link (optional)", consentAccuracy: "I confirm that the information provided is accurate",
+    earliestStart: "Earliest start date", videoUrl: "Introductory video link (optional)", additionalLinks: "CV, certificates, portfolio, or cloud links", addLink: "Add another link", remove: "Remove", linkType: "Link type", linkUrl: "URL", consentAccuracy: "I confirm that the information provided is accurate",
     consentPrivacy: "I agree to the privacy notice and recruitment-related communication", select: "Select…",
     reviewHelp: "Review the information below, confirm the declarations, and submit your application.", personalHelp: "Tell us how we can contact you.",
     educationHelp: "Share your academic qualifications and ijazahs.", teachingHelp: "Choose what and whom you are qualified to teach.",
@@ -78,20 +90,20 @@ const labels = {
   },
   ar: {
     fullNameEnglish: "الاسم الكامل بالإنجليزية", fullNameArabic: "الاسم الكامل بالعربية", phone: "رقم واتساب أو الهاتف",
-    country: "الدولة", city: "المدينة", timezone: "المنطقة الزمنية", gender: "الجنس", male: "ذكر", female: "أنثى",
+    country: "الدولة", city: "المحافظة أو المدينة", timezone: "المنطقة الزمنية", gender: "الجنس", male: "ذكر", female: "أنثى",
     over18: "أؤكد أن عمري 18 عامًا أو أكثر", azharStatus: "الدراسة في الأزهر", graduate: "خريج", student: "طالب حالي",
-    none: "مؤهل تعليمي آخر", institution: "الجامعة أو المعهد", faculty: "الكلية والقسم", qualification: "الدرجة أو المؤهل",
+    none: "مؤهل تعليمي آخر", institution: "الجامعة أو المعهد", institutionOther: "اسم الجامعة أو المعهد", faculty: "الكلية والقسم", qualification: "الدرجة أو المؤهل",
     graduationYear: "سنة التخرج", hasIjazah: "هل تحمل إجازة في القرآن؟", yes: "نعم", no: "لا",
     ijazahDetails: "تفاصيل الإجازة والرواية والشيخ المجيز", specializations: "تخصصات التدريس", quran: "تلاوة القرآن",
     tajweed: "التجويد", memorization: "الحفظ والمراجعة", qiraat: "القراءات والإجازات", noor: "نور البيان",
     arabic: "العربية لغير الناطقين بها", islamic: "الدراسات الإسلامية", ageGroups: "الفئات العمرية", children: "الأطفال",
-    teens: "المراهقون", adults: "البالغون", teachingLanguages: "اللغات التي تستطيع التدريس بها",
+    teens: "المراهقون", adults: "البالغون", teachingLanguages: "اللغات التي تستطيع التدريس بها", languageLevel: "مستوى اللغة", otherLanguage: "اسم اللغة",
     yearsExperience: "إجمالي سنوات الخبرة", onlineExperience: "اشرح خبرتك في التدريس عن بُعد",
     previousWork: "الأكاديميات أو جهات التدريس السابقة", motivation: "لماذا ترغب في التدريس مع أكاديمية أزهري؟",
-    childScenario: "كيف تساعد طفلًا يفقد تركيزه أثناء الحصة؟", device: "جهاز التدريس الأساسي",
-    internet: "اتصال الإنترنت والخطة البديلة", teachingSpace: "لدي مكان هادئ ومناسب للتدريس", videoTools: "أدوات التعليم التي تجيدها",
+    childScenario: "كيف تساعد طفلًا يفقد تركيزه أثناء الحصة؟", device: "جهاز التدريس الأساسي", deviceOther: "تفاصيل الجهاز",
+    internet: "اتصال الإنترنت الأساسي", internetBackup: "اتصال الإنترنت البديل", teachingSpace: "لدي مكان هادئ ومناسب للتدريس", videoTools: "أدوات التعليم التي تجيدها",
     weeklyHours: "عدد ساعات التدريس المتاحة أسبوعيًا", availability: "الأيام والفترات المتاحة", earliestStart: "أقرب تاريخ للبدء",
-    videoUrl: "رابط الفيديو التعريفي (اختياري)", consentAccuracy: "أؤكد صحة المعلومات المقدمة",
+    videoUrl: "رابط الفيديو التعريفي (اختياري)", additionalLinks: "روابط السيرة الذاتية أو الشهادات أو معرض الأعمال أو التخزين السحابي", addLink: "إضافة رابط آخر", remove: "حذف", linkType: "نوع الرابط", linkUrl: "الرابط", consentAccuracy: "أؤكد صحة المعلومات المقدمة",
     consentPrivacy: "أوافق على سياسة الخصوصية والتواصل المتعلق بالتوظيف", select: "اختر…",
     reviewHelp: "راجع المعلومات وأكد الإقرارات ثم أرسل الطلب.", personalHelp: "أخبرنا كيف يمكننا التواصل معك.",
     educationHelp: "أضف مؤهلاتك الأكاديمية وإجازاتك.", teachingHelp: "حدد ما يمكنك تدريسه والفئات التي تجيد التعامل معها.",
@@ -103,11 +115,20 @@ function Field({ label, required, full, hint, children }: { label: string; requi
   return <div className={`field${full ? " full" : ""}`}><label>{label}{required && <span className="required"> *</span>}</label>{children}{hint && <span className="field-hint">{hint}</span>}</div>;
 }
 
-export function ApplicationForm({ locale, token, continueMode, copy }: { locale: Locale; token?: string; continueMode: boolean; copy: FormCopy }) {
+function hydrateDraft(email: string, saved?: Record<string, unknown>): Draft {
+  const merged = { ...initialDraft, ...(saved || {}), email } as Draft;
+  if (!Array.isArray(merged.teachingLanguages)) merged.teachingLanguages = [];
+  if (!Array.isArray(merged.links)) merged.links = [];
+  const savedSlots = Array.isArray(merged.availability) ? merged.availability : [];
+  merged.availability = WEEKDAYS.map(({ value }) => savedSlots.find((slot) => slot?.day === value) || { day: value, enabled: false, from: "", to: "" });
+  return merged;
+}
+
+export function ApplicationForm({ locale, token, continueMode, copy, initialEmail = "", initialData }: { locale: Locale; token?: string; continueMode: boolean; copy: FormCopy; initialEmail?: string; initialData?: Record<string, unknown> }) {
   const t = labels[locale];
   const [accessToken, setAccessToken] = useState(token || "");
-  const [email, setEmail] = useState("");
-  const [draft, setDraft] = useState<Draft>(initialDraft);
+  const [email, setEmail] = useState(initialEmail);
+  const [draft, setDraft] = useState<Draft>(() => hydrateDraft(initialEmail, initialData));
   const [step, setStep] = useState(0);
   const [sent, setSent] = useState(false);
   const [complete, setComplete] = useState(false);
@@ -115,6 +136,12 @@ export function ApplicationForm({ locale, token, continueMode, copy }: { locale:
   const [message, setMessage] = useState("");
   const sections = copy.sections;
   const progress = useMemo(() => ((step + 1) / sections.length) * 100, [step, sections.length]);
+  const countries = useMemo(() => countryOptions(locale), [locale]);
+  const timeZones = useMemo(() => timeZoneOptions(), []);
+  const graduationYears = useMemo(() => {
+    const current = new Date().getFullYear();
+    return Array.from({ length: current + 4 - 1950 + 1 }, (_, index) => String(current + 4 - index));
+  }, []);
 
   async function startApplication(event: React.FormEvent) {
     event.preventDefault();
@@ -134,8 +161,48 @@ export function ApplicationForm({ locale, token, continueMode, copy }: { locale:
   function toggle(key: "specializations" | "ageGroups" | "videoTools", value: string) {
     setDraft((current) => ({ ...current, [key]: current[key].includes(value) ? current[key].filter((item) => item !== value) : [...current[key], value] }));
   }
+  function toggleLanguage(language: string) {
+    setDraft((current) => ({
+      ...current,
+      teachingLanguages: current.teachingLanguages.some((item) => item.language === language)
+        ? current.teachingLanguages.filter((item) => item.language !== language)
+        : [...current.teachingLanguages, { language, level: "" }]
+    }));
+  }
+  function updateLanguage(language: string, changes: Partial<LanguageSkill>) {
+    setDraft((current) => ({ ...current, teachingLanguages: current.teachingLanguages.map((item) => item.language === language ? { ...item, ...changes } : item) }));
+  }
+  function updateAvailability(day: string, changes: Partial<AvailabilitySlot>) {
+    setDraft((current) => ({ ...current, availability: current.availability.map((slot) => slot.day === day ? { ...slot, ...changes } : slot) }));
+  }
+  function addLink() {
+    setDraft((current) => ({ ...current, links: [...current.links, { type: "cv", url: "" }] }));
+  }
+  function updateLink(index: number, changes: Partial<ApplicationLink>) {
+    setDraft((current) => ({ ...current, links: current.links.map((link, itemIndex) => itemIndex === index ? { ...link, ...changes } : link) }));
+  }
+  function removeLink(index: number) {
+    setDraft((current) => ({ ...current, links: current.links.filter((_, itemIndex) => itemIndex !== index) }));
+  }
+
+  function validationMessage() {
+    const required = locale === "en" ? "Please complete all required fields in this section." : "يرجى إكمال جميع الحقول المطلوبة في هذا القسم.";
+    if (step === 0 && (!draft.fullNameEnglish.trim() || !draft.fullNameArabic.trim() || !draft.email || !draft.phone.trim() || !draft.country || !draft.city || !draft.timezone || !draft.gender || !draft.over18)) return required;
+    if (step === 1 && (!draft.azharStatus || !draft.institution || (draft.institution === "other" && !draft.institutionOther.trim()) || !draft.qualification.trim() || !draft.hasIjazah)) return required;
+    if (step === 2 && (!draft.specializations.length || !draft.ageGroups.length || !draft.teachingLanguages.length || draft.teachingLanguages.some((item) => !item.level || (item.language === "other" && !item.otherLanguage?.trim())))) return required;
+    if (step === 3 && (!draft.yearsExperience || !draft.onlineExperience.trim() || !draft.motivation.trim() || !draft.childScenario.trim())) return required;
+    if (step === 4) {
+      const completeSlot = draft.availability.some((slot) => slot.enabled && slot.from && slot.to);
+      const incompleteSlot = draft.availability.some((slot) => slot.enabled && (!slot.from || !slot.to));
+      if (!draft.device || (draft.device === "other" && !draft.deviceOther.trim()) || !draft.internet || !draft.internetBackup || !draft.weeklyHours || !draft.earliestStart || !completeSlot || incompleteSlot) return required;
+      if (draft.links.some((link) => !link.url.trim())) return locale === "en" ? "Complete or remove each additional link." : "يرجى إكمال كل رابط إضافي أو حذفه.";
+    }
+    return "";
+  }
 
   async function saveAndContinue() {
+    const validation = validationMessage();
+    if (validation) { setMessage(validation); return; }
     setBusy(true); setMessage("");
     try {
       const response = await fetch("/api/applications/draft", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ step, data: draft, locale }) });
@@ -185,27 +252,28 @@ export function ApplicationForm({ locale, token, continueMode, copy }: { locale:
         {step === 0 && <>
           <Field label={t.fullNameEnglish} required><input value={draft.fullNameEnglish} onChange={(e) => update("fullNameEnglish", e.target.value)} /></Field>
           <Field label={t.fullNameArabic} required><input value={draft.fullNameArabic} onChange={(e) => update("fullNameArabic", e.target.value)} /></Field>
-          <Field label={copy.email as string} required><input value={draft.email || email} disabled /></Field>
+          <Field label={copy.email as string} required hint={locale === "en" ? "Verified through your secure email link." : "تم التحقق منه من خلال الرابط الآمن المرسل إلى بريدك."}><input value={draft.email || email} readOnly className="verified-input" /></Field>
           <Field label={t.phone} required><input type="tel" value={draft.phone} onChange={(e) => update("phone", e.target.value)} /></Field>
-          <Field label={t.country} required><input value={draft.country} onChange={(e) => update("country", e.target.value)} /></Field>
-          <Field label={t.city} required><input value={draft.city} onChange={(e) => update("city", e.target.value)} /></Field>
-          <Field label={t.timezone} required><input value={draft.timezone} onChange={(e) => update("timezone", e.target.value)} placeholder="Africa/Cairo" /></Field>
+          <Field label={t.country} required><select value={draft.country} onChange={(e) => { update("country", e.target.value); update("city", ""); if (e.target.value === "EG" && !draft.timezone) update("timezone", "Africa/Cairo"); }}><option value="">{t.select}</option>{countries.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></Field>
+          <Field label={t.city} required>{draft.country === "EG" ? <select value={draft.city} onChange={(e) => update("city", e.target.value)}><option value="">{t.select}</option>{EGYPT_GOVERNORATES.map((item) => <option value={item.value} key={item.value}>{optionLabel(item, locale)}</option>)}</select> : <input value={draft.city} onChange={(e) => update("city", e.target.value)} />}</Field>
+          <Field label={t.timezone} required><select value={draft.timezone} onChange={(e) => update("timezone", e.target.value)}><option value="">{t.select}</option>{timeZones.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></Field>
           <Field label={t.gender} required><select value={draft.gender} onChange={(e) => update("gender", e.target.value)}><option value="">{t.select}</option><option value="male">{t.male}</option><option value="female">{t.female}</option></select></Field>
           <label className="choice field full"><input type="checkbox" checked={draft.over18} onChange={(e) => update("over18", e.target.checked)} />{t.over18}</label>
         </>}
         {step === 1 && <>
           <Field label={t.azharStatus} required><select value={draft.azharStatus} onChange={(e) => update("azharStatus", e.target.value)}><option value="">{t.select}</option><option value="graduate">{t.graduate}</option><option value="student">{t.student}</option><option value="other">{t.none}</option></select></Field>
-          <Field label={t.institution} required><input value={draft.institution} onChange={(e) => update("institution", e.target.value)} /></Field>
+          <Field label={t.institution} required>{draft.country === "EG" ? <select value={draft.institution} onChange={(e) => update("institution", e.target.value)}><option value="">{t.select}</option>{EGYPT_UNIVERSITIES.map((item) => <option value={item.value} key={item.value}>{optionLabel(item, locale)}</option>)}<option value="other">{locale === "en" ? "Other university or institute" : "جامعة أو معهد آخر"}</option></select> : <input value={draft.institution} onChange={(e) => update("institution", e.target.value)} />}</Field>
+          {draft.institution === "other" && <Field label={t.institutionOther} required><input value={draft.institutionOther} onChange={(e) => update("institutionOther", e.target.value)} /></Field>}
           <Field label={t.faculty}><input value={draft.faculty} onChange={(e) => update("faculty", e.target.value)} /></Field>
           <Field label={t.qualification} required><input value={draft.qualification} onChange={(e) => update("qualification", e.target.value)} /></Field>
-          <Field label={t.graduationYear}><input inputMode="numeric" value={draft.graduationYear} onChange={(e) => update("graduationYear", e.target.value)} /></Field>
+          <Field label={t.graduationYear}><select value={draft.graduationYear} onChange={(e) => update("graduationYear", e.target.value)}><option value="">{t.select}</option><option value="not_graduated">{locale === "en" ? "Not graduated yet" : "لم أتخرج بعد"}</option>{graduationYears.map((year) => <option value={year} key={year}>{year}</option>)}</select></Field>
           <Field label={t.hasIjazah} required><select value={draft.hasIjazah} onChange={(e) => update("hasIjazah", e.target.value)}><option value="">{t.select}</option><option value="yes">{t.yes}</option><option value="no">{t.no}</option></select></Field>
           {draft.hasIjazah === "yes" && <Field label={t.ijazahDetails} full><textarea value={draft.ijazahDetails} onChange={(e) => update("ijazahDetails", e.target.value)} /></Field>}
         </>}
         {step === 2 && <>
           <Field label={t.specializations} required full><div className="choice-grid">{[["quran", t.quran], ["tajweed", t.tajweed], ["memorization", t.memorization], ["qiraat", t.qiraat], ["noor", t.noor], ["arabic", t.arabic], ["islamic", t.islamic]].map(([value, label]) => <label className="choice" key={value}><input type="checkbox" checked={draft.specializations.includes(value)} onChange={() => toggle("specializations", value)} />{label}</label>)}</div></Field>
           <Field label={t.ageGroups} required full><div className="choice-grid">{[["children", t.children], ["teens", t.teens], ["adults", t.adults]].map(([value, label]) => <label className="choice" key={value}><input type="checkbox" checked={draft.ageGroups.includes(value)} onChange={() => toggle("ageGroups", value)} />{label}</label>)}</div></Field>
-          <Field label={t.teachingLanguages} required full><input value={draft.teachingLanguages} onChange={(e) => update("teachingLanguages", e.target.value)} placeholder={locale === "en" ? "Arabic, English…" : "العربية، الإنجليزية…"} /></Field>
+          <Field label={t.teachingLanguages} required full><div className="language-list">{TEACHING_LANGUAGES.map((language) => { const skill = draft.teachingLanguages.find((item) => item.language === language.value); return <div className={`language-row${skill ? " selected" : ""}`} key={language.value}><label className="choice"><input type="checkbox" checked={Boolean(skill)} onChange={() => toggleLanguage(language.value)} />{optionLabel(language, locale)}</label>{skill && <><select aria-label={t.languageLevel} value={skill.level} onChange={(e) => updateLanguage(language.value, { level: e.target.value })}><option value="">{t.languageLevel}</option>{LANGUAGE_LEVELS.map((level) => <option value={level.value} key={level.value}>{optionLabel(level, locale)}</option>)}</select>{language.value === "other" && <input aria-label={t.otherLanguage} placeholder={t.otherLanguage} value={skill.otherLanguage || ""} onChange={(e) => updateLanguage(language.value, { otherLanguage: e.target.value })} />}</>}</div>; })}</div></Field>
         </>}
         {step === 3 && <>
           <Field label={t.yearsExperience} required><input type="number" min="0" max="60" value={draft.yearsExperience} onChange={(e) => update("yearsExperience", e.target.value)} /></Field>
@@ -215,14 +283,17 @@ export function ApplicationForm({ locale, token, continueMode, copy }: { locale:
           <Field label={t.childScenario} required full><textarea value={draft.childScenario} onChange={(e) => update("childScenario", e.target.value)} /></Field>
         </>}
         {step === 4 && <>
-          <Field label={t.device} required><input value={draft.device} onChange={(e) => update("device", e.target.value)} /></Field>
-          <Field label={t.internet} required><input value={draft.internet} onChange={(e) => update("internet", e.target.value)} /></Field>
+          <Field label={t.device} required><select value={draft.device} onChange={(e) => update("device", e.target.value)}><option value="">{t.select}</option><option value="desktop">{locale === "en" ? "Desktop computer" : "حاسوب مكتبي"}</option><option value="laptop">{locale === "en" ? "Laptop" : "حاسوب محمول"}</option><option value="tablet">{locale === "en" ? "Tablet" : "جهاز لوحي"}</option><option value="smartphone">{locale === "en" ? "Smartphone" : "هاتف ذكي"}</option><option value="other">{locale === "en" ? "Other" : "أخرى"}</option></select></Field>
+          {draft.device === "other" && <Field label={t.deviceOther} required><input value={draft.deviceOther} onChange={(e) => update("deviceOther", e.target.value)} /></Field>}
+          <Field label={t.internet} required><select value={draft.internet} onChange={(e) => update("internet", e.target.value)}><option value="">{t.select}</option><option value="fiber">{locale === "en" ? "Fiber" : "ألياف ضوئية"}</option><option value="vdsl">VDSL / DSL</option><option value="fixed-wireless">{locale === "en" ? "Fixed wireless" : "إنترنت لاسلكي ثابت"}</option><option value="mobile-data">{locale === "en" ? "Mobile data" : "بيانات الهاتف"}</option><option value="other">{locale === "en" ? "Other" : "أخرى"}</option></select></Field>
+          <Field label={t.internetBackup} required><select value={draft.internetBackup} onChange={(e) => update("internetBackup", e.target.value)}><option value="">{t.select}</option><option value="mobile-data">{locale === "en" ? "Mobile data" : "بيانات الهاتف"}</option><option value="second-line">{locale === "en" ? "Second fixed line" : "خط إنترنت ثابت ثانٍ"}</option><option value="portable-router">{locale === "en" ? "Portable router" : "راوتر متنقل"}</option><option value="other">{locale === "en" ? "Other available backup" : "بديل آخر متاح"}</option><option value="none">{locale === "en" ? "No backup connection" : "لا يوجد اتصال بديل"}</option></select></Field>
           <label className="choice field full"><input type="checkbox" checked={draft.teachingSpace} onChange={(e) => update("teachingSpace", e.target.checked)} />{t.teachingSpace}</label>
           <Field label={t.videoTools} full><div className="choice-grid">{["Zoom", "Google Meet", "Digital whiteboard", "Screen sharing"].map((value) => <label className="choice" key={value}><input type="checkbox" checked={draft.videoTools.includes(value)} onChange={() => toggle("videoTools", value)} />{value}</label>)}</div></Field>
           <Field label={t.weeklyHours} required><input type="number" min="1" max="80" value={draft.weeklyHours} onChange={(e) => update("weeklyHours", e.target.value)} /></Field>
           <Field label={t.earliestStart} required><input type="date" value={draft.earliestStart} onChange={(e) => update("earliestStart", e.target.value)} /></Field>
-          <Field label={t.availability} required full><textarea value={draft.availability} onChange={(e) => update("availability", e.target.value)} placeholder={locale === "en" ? "Example: Sunday–Thursday, 4–9 PM Cairo time" : "مثال: من الأحد إلى الخميس، 4–9 مساءً بتوقيت القاهرة"} /></Field>
+          <Field label={t.availability} required full hint={draft.timezone ? `${locale === "en" ? "All times use" : "جميع المواعيد حسب"}: ${draft.timezone}` : undefined}><div className="availability-list">{WEEKDAYS.map((day) => { const slot = draft.availability.find((item) => item.day === day.value)!; return <div className={`availability-row${slot.enabled ? " selected" : ""}`} key={day.value}><label className="choice"><input type="checkbox" checked={slot.enabled} onChange={(e) => updateAvailability(day.value, { enabled: e.target.checked })} />{optionLabel(day, locale)}</label><label><span>{locale === "en" ? "From" : "من"}</span><input type="time" value={slot.from} disabled={!slot.enabled} onChange={(e) => updateAvailability(day.value, { from: e.target.value })} /></label><label><span>{locale === "en" ? "To" : "إلى"}</span><input type="time" value={slot.to} disabled={!slot.enabled} onChange={(e) => updateAvailability(day.value, { to: e.target.value })} /></label></div>; })}</div></Field>
           <Field label={t.videoUrl} full><input type="url" value={draft.videoUrl} onChange={(e) => update("videoUrl", e.target.value)} placeholder="https://" /></Field>
+          <Field label={t.additionalLinks} full><div className="links-list">{draft.links.map((link, index) => <div className="link-row" key={index}><select aria-label={t.linkType} value={link.type} onChange={(e) => updateLink(index, { type: e.target.value })}><option value="cv">{locale === "en" ? "CV / résumé" : "السيرة الذاتية"}</option><option value="certificates">{locale === "en" ? "Certificates" : "الشهادات"}</option><option value="portfolio">{locale === "en" ? "Portfolio" : "معرض الأعمال"}</option><option value="cloud">{locale === "en" ? "Google Drive / cloud folder" : "جوجل درايف أو مجلد سحابي"}</option><option value="linkedin">LinkedIn</option><option value="other">{locale === "en" ? "Other" : "أخرى"}</option></select><input type="url" aria-label={t.linkUrl} value={link.url} onChange={(e) => updateLink(index, { url: e.target.value })} placeholder="https://" /><button className="remove-link" type="button" onClick={() => removeLink(index)}>{t.remove}</button></div>)}<button className="button button-light add-link" type="button" onClick={addLink}>+ {t.addLink}</button></div></Field>
         </>}
         {step === 5 && <>
           <div className="field full"><div className="form-message success">{locale === "en" ? `Application for ${draft.fullNameEnglish || "applicant"} · ${draft.email || email}` : `طلب المتقدم ${draft.fullNameArabic || ""} · ${draft.email || email}`}</div></div>

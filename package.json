@@ -1,0 +1,14 @@
+{
+  "name": "azhari-academy-tutors",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tutors platform for Azhari Academy",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development node server.js",
+    "check": "node --check server.js"
+  }
+}

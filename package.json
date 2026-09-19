@@ -2,13 +2,36 @@
   "name": "azhari-academy-tutors",
   "version": "0.1.0",
   "private": true,
-  "description": "Tutors platform for Azhari Academy",
+  "description": "Bilingual teacher recruitment portal for Azhari Academy",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
-    "start": "node server.js",
-    "dev": "NODE_ENV=development node server.js",
-    "check": "node --check server.js"
+    "build": "next build",
+    "start": "NODE_ENV=production node server.js",
+    "dev": "next dev --webpack --hostname 0.0.0.0",
+    "check": "tsc --noEmit",
+    "db:start": "node scripts/local-db.mjs start",
+    "db:stop": "node scripts/local-db.mjs stop",
+    "db:status": "node scripts/local-db.mjs status",
+    "db:setup": "node scripts/local-db.mjs setup",
+    "admin:create": "node --env-file=.env scripts/create-admin.mjs",
+    "test:local": "node --env-file=.env scripts/test-local.mjs"
+  },
+  "dependencies": {
+    "jose": "^6.2.12",
+    "mysql2": "^3.24.4",
+    "next": "^16.3.5",
+    "nodemailer": "^10.0.10",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/nodemailer": "^8.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2"
   }
 }

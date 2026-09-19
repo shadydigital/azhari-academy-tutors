@@ -15,7 +15,7 @@
     "db:stop": "node scripts/local-db.mjs stop",
     "db:status": "node scripts/local-db.mjs status",
     "db:setup": "node scripts/local-db.mjs setup",
-    "admin:create": "node --env-file=.env scripts/create-admin.mjs",
+    "admin:create": "node scripts/create-admin.mjs",
     "test:local": "node --env-file=.env scripts/test-local.mjs"
   },
   "dependencies": {

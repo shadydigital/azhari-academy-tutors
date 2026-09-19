@@ -12,7 +12,7 @@ Requirements: Node.js 22 and MySQL/MariaDB.
 npm install
 cp .env.example .env
 npm run db:setup
-npm run admin:create -- admin@example.com "Admin Name"
+ADMIN_PASSWORD='choose-a-strong-local-password' node --env-file=.env scripts/create-admin.mjs admin@example.com "Admin Name"
 npm run dev
 ```
 

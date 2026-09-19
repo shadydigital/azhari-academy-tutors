@@ -15,6 +15,7 @@ type FormCopy = {
 type LanguageSkill = { language: string; level: string; otherLanguage?: string };
 type AvailabilitySlot = { day: string; enabled: boolean; from: string; to: string };
 type ApplicationLink = { type: string; url: string };
+type ValidationIssue = { step: number; field: string; message: string };
 
 export type Draft = {
   email: string;
@@ -111,8 +112,8 @@ const labels = {
   }
 } as const;
 
-function Field({ label, required, full, hint, children }: { label: string; required?: boolean; full?: boolean; hint?: string; children: React.ReactNode }) {
-  return <div className={`field${full ? " full" : ""}`}><label>{label}{required && <span className="required"> *</span>}</label>{children}{hint && <span className="field-hint">{hint}</span>}</div>;
+function Field({ label, required, full, hint, error, children }: { label: string; required?: boolean; full?: boolean; hint?: string; error?: boolean; children: React.ReactNode }) {
+  return <div className={`field${full ? " full" : ""}${error ? " invalid" : ""}`}><label>{label}{required && <span className="required"> *</span>}</label>{children}{hint && <span className="field-hint">{hint}</span>}</div>;
 }
 
 function hydrateDraft(email: string, saved?: Record<string, unknown>): Draft {
@@ -134,6 +135,7 @@ export function ApplicationForm({ locale, token, continueMode, copy, initialEmai
   const [complete, setComplete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([]);
   const sections = copy.sections;
   const progress = useMemo(() => ((step + 1) / sections.length) * 100, [step, sections.length]);
   const countries = useMemo(() => countryOptions(locale), [locale]);
@@ -157,9 +159,11 @@ export function ApplicationForm({ locale, token, continueMode, copy, initialEmai
     finally { setBusy(false); }
   }
 
-  function update<K extends keyof Draft>(key: K, value: Draft[K]) { setDraft((current) => ({ ...current, [key]: value })); }
+  function clearFieldIssue(field: string) { setValidationIssues((current) => current.filter((issue) => issue.field !== field)); }
+  function update<K extends keyof Draft>(key: K, value: Draft[K]) { setDraft((current) => ({ ...current, [key]: value })); clearFieldIssue(key); }
   function toggle(key: "specializations" | "ageGroups" | "videoTools", value: string) {
     setDraft((current) => ({ ...current, [key]: current[key].includes(value) ? current[key].filter((item) => item !== value) : [...current[key], value] }));
+    clearFieldIssue(key);
   }
   function toggleLanguage(language: string) {
     setDraft((current) => ({
@@ -168,41 +172,115 @@ export function ApplicationForm({ locale, token, continueMode, copy, initialEmai
         ? current.teachingLanguages.filter((item) => item.language !== language)
         : [...current.teachingLanguages, { language, level: "" }]
     }));
+    clearFieldIssue("teachingLanguages");
   }
   function updateLanguage(language: string, changes: Partial<LanguageSkill>) {
     setDraft((current) => ({ ...current, teachingLanguages: current.teachingLanguages.map((item) => item.language === language ? { ...item, ...changes } : item) }));
+    clearFieldIssue("teachingLanguages");
   }
   function updateAvailability(day: string, changes: Partial<AvailabilitySlot>) {
     setDraft((current) => ({ ...current, availability: current.availability.map((slot) => slot.day === day ? { ...slot, ...changes } : slot) }));
+    clearFieldIssue("availability");
   }
   function addLink() {
     setDraft((current) => ({ ...current, links: [...current.links, { type: "cv", url: "" }] }));
+    clearFieldIssue("links");
   }
   function updateLink(index: number, changes: Partial<ApplicationLink>) {
     setDraft((current) => ({ ...current, links: current.links.map((link, itemIndex) => itemIndex === index ? { ...link, ...changes } : link) }));
+    clearFieldIssue("links");
   }
   function removeLink(index: number) {
     setDraft((current) => ({ ...current, links: current.links.filter((_, itemIndex) => itemIndex !== index) }));
+    clearFieldIssue("links");
   }
 
-  function validationMessage() {
-    const required = locale === "en" ? "Please complete all required fields in this section." : "يرجى إكمال جميع الحقول المطلوبة في هذا القسم.";
-    if (step === 0 && (!draft.fullNameEnglish.trim() || !draft.fullNameArabic.trim() || !draft.email || !draft.phone.trim() || !draft.country || !draft.city || !draft.timezone || !draft.gender || !draft.over18)) return required;
-    if (step === 1 && (!draft.azharStatus || !draft.institution || (draft.institution === "other" && !draft.institutionOther.trim()) || !draft.qualification.trim() || !draft.hasIjazah)) return required;
-    if (step === 2 && (!draft.specializations.length || !draft.ageGroups.length || !draft.teachingLanguages.length || draft.teachingLanguages.some((item) => !item.level || (item.language === "other" && !item.otherLanguage?.trim())))) return required;
-    if (step === 3 && (!draft.yearsExperience || !draft.onlineExperience.trim() || !draft.motivation.trim() || !draft.childScenario.trim())) return required;
-    if (step === 4) {
-      const completeSlot = draft.availability.some((slot) => slot.enabled && slot.from && slot.to);
-      const incompleteSlot = draft.availability.some((slot) => slot.enabled && (!slot.from || !slot.to));
-      if (!draft.device || (draft.device === "other" && !draft.deviceOther.trim()) || !draft.internet || !draft.internetBackup || !draft.weeklyHours || !draft.earliestStart || !completeSlot || incompleteSlot) return required;
-      if (draft.links.some((link) => !link.url.trim())) return locale === "en" ? "Complete or remove each additional link." : "يرجى إكمال كل رابط إضافي أو حذفه.";
+  function validateStep(stepToValidate: number): ValidationIssue[] {
+    const issues: ValidationIssue[] = [];
+    const required = (field: string, label: string) => issues.push({ step: stepToValidate, field, message: locale === "en" ? `${label} is required.` : `${label}: حقل مطلوب.` });
+    const invalid = (field: string, label: string, detail?: string) => issues.push({ step: stepToValidate, field, message: locale === "en" ? `${label}: ${detail || "please review this field."}` : `${label}: ${detail || "يرجى مراجعة هذا الحقل."}` });
+
+    if (stepToValidate === 0) {
+      if (!draft.fullNameEnglish.trim()) required("fullNameEnglish", t.fullNameEnglish);
+      if (!draft.fullNameArabic.trim()) required("fullNameArabic", t.fullNameArabic);
+      if (!draft.email) required("email", copy.email as string);
+      if (!draft.phone.trim()) required("phone", t.phone);
+      if (!draft.country) required("country", t.country);
+      if (!draft.city) required("city", t.city);
+      if (!draft.timezone) required("timezone", t.timezone);
+      if (!draft.gender) required("gender", t.gender);
+      if (!draft.over18) required("over18", t.over18);
     }
-    return "";
+    if (stepToValidate === 1) {
+      if (!draft.azharStatus) required("azharStatus", t.azharStatus);
+      if (!draft.institution) required("institution", t.institution);
+      if (draft.institution === "other" && !draft.institutionOther.trim()) required("institutionOther", t.institutionOther);
+      if (!draft.qualification.trim()) required("qualification", t.qualification);
+      if (!draft.hasIjazah) required("hasIjazah", t.hasIjazah);
+    }
+    if (stepToValidate === 2) {
+      if (!draft.specializations.length) required("specializations", t.specializations);
+      if (!draft.ageGroups.length) required("ageGroups", t.ageGroups);
+      if (!draft.teachingLanguages.length) required("teachingLanguages", t.teachingLanguages);
+      if (draft.teachingLanguages.some((item) => !item.level)) invalid("teachingLanguages", t.teachingLanguages, locale === "en" ? "choose a proficiency level for every selected language." : "اختر مستوى لكل لغة محددة.");
+      if (draft.teachingLanguages.some((item) => item.language === "other" && !item.otherLanguage?.trim())) required("teachingLanguages", t.otherLanguage);
+    }
+    if (stepToValidate === 3) {
+      if (!draft.yearsExperience) required("yearsExperience", t.yearsExperience);
+      if (!draft.onlineExperience.trim()) required("onlineExperience", t.onlineExperience);
+      else if (draft.onlineExperience.trim().length < 10) invalid("onlineExperience", t.onlineExperience, locale === "en" ? "write at least 10 characters." : "اكتب 10 أحرف على الأقل.");
+      if (!draft.motivation.trim()) required("motivation", t.motivation);
+      else if (draft.motivation.trim().length < 20) invalid("motivation", t.motivation, locale === "en" ? "write at least 20 characters." : "اكتب 20 حرفًا على الأقل.");
+      if (!draft.childScenario.trim()) required("childScenario", t.childScenario);
+      else if (draft.childScenario.trim().length < 20) invalid("childScenario", t.childScenario, locale === "en" ? "write at least 20 characters." : "اكتب 20 حرفًا على الأقل.");
+    }
+    if (stepToValidate === 4) {
+      if (!draft.device) required("device", t.device);
+      if (draft.device === "other" && !draft.deviceOther.trim()) required("deviceOther", t.deviceOther);
+      if (!draft.internet) required("internet", t.internet);
+      if (!draft.internetBackup) required("internetBackup", t.internetBackup);
+      if (!draft.weeklyHours) required("weeklyHours", t.weeklyHours);
+      if (!draft.earliestStart) required("earliestStart", t.earliestStart);
+      const enabledSlots = draft.availability.filter((slot) => slot.enabled);
+      if (!enabledSlots.length) required("availability", t.availability);
+      else if (enabledSlots.some((slot) => !slot.from || !slot.to)) invalid("availability", t.availability, locale === "en" ? "complete the start and end time for each selected day." : "أكمل وقت البداية والنهاية لكل يوم محدد.");
+      draft.links.forEach((link, index) => {
+        if (!link.url.trim()) required("links", `${t.additionalLinks} ${index + 1}`);
+        else { try { new URL(link.url); } catch { invalid("links", `${t.additionalLinks} ${index + 1}`, locale === "en" ? "enter a valid link." : "أدخل رابطًا صحيحًا."); } }
+      });
+    }
+    if (stepToValidate === 5) {
+      if (!draft.consentAccuracy) required("consentAccuracy", t.consentAccuracy);
+      if (!draft.consentPrivacy) required("consentPrivacy", t.consentPrivacy);
+    }
+    return issues;
+  }
+
+  function fieldStep(field: string) {
+    if (["fullNameEnglish", "fullNameArabic", "email", "phone", "country", "city", "timezone", "gender", "over18"].includes(field)) return 0;
+    if (["azharStatus", "institution", "institutionOther", "qualification", "hasIjazah"].includes(field)) return 1;
+    if (["specializations", "ageGroups", "teachingLanguages"].includes(field)) return 2;
+    if (["yearsExperience", "onlineExperience", "motivation", "childScenario"].includes(field)) return 3;
+    if (["device", "deviceOther", "internet", "internetBackup", "weeklyHours", "earliestStart", "availability", "links"].includes(field)) return 4;
+    return 5;
+  }
+
+  function fieldLabel(field: string) {
+    const names: Record<string, string> = {
+      fullNameEnglish: t.fullNameEnglish, fullNameArabic: t.fullNameArabic, email: copy.email as string, phone: t.phone,
+      country: t.country, city: t.city, timezone: t.timezone, gender: t.gender, over18: t.over18,
+      azharStatus: t.azharStatus, institution: t.institution, institutionOther: t.institutionOther, qualification: t.qualification, hasIjazah: t.hasIjazah,
+      specializations: t.specializations, ageGroups: t.ageGroups, teachingLanguages: t.teachingLanguages,
+      yearsExperience: t.yearsExperience, onlineExperience: t.onlineExperience, motivation: t.motivation, childScenario: t.childScenario,
+      device: t.device, deviceOther: t.deviceOther, internet: t.internet, internetBackup: t.internetBackup, weeklyHours: t.weeklyHours,
+      earliestStart: t.earliestStart, availability: t.availability, links: t.additionalLinks, consentAccuracy: t.consentAccuracy, consentPrivacy: t.consentPrivacy
+    };
+    return names[field] || field;
   }
 
   async function saveAndContinue() {
-    const validation = validationMessage();
-    if (validation) { setMessage(validation); return; }
+    const issues = validateStep(step);
+    if (issues.length) { setValidationIssues(issues); setMessage(""); return; }
     setBusy(true); setMessage("");
     try {
       const response = await fetch("/api/applications/draft", { method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ step, data: draft, locale }) });
@@ -215,11 +293,31 @@ export function ApplicationForm({ locale, token, continueMode, copy, initialEmai
   }
 
   async function submitApplication() {
+    const issues = Array.from({ length: sections.length }, (_, index) => validateStep(index)).flat();
+    if (issues.length) {
+      setValidationIssues(issues);
+      setStep(issues[0].step);
+      setMessage("");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     setBusy(true); setMessage("");
     try {
       const response = await fetch("/api/applications/submit", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ data: draft, locale }) });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.message || "Unable to submit your application");
+      if (!response.ok) {
+        if (Array.isArray(result.fields) && result.fields.length) {
+          const responseIssues: ValidationIssue[] = result.fields.map((field: unknown) => {
+            const name = String(field);
+            return { step: fieldStep(name), field: name, message: locale === "en" ? `${fieldLabel(name)}: please review this field.` : `${fieldLabel(name)}: يرجى مراجعة هذا الحقل.` };
+          });
+          setValidationIssues(responseIssues);
+          setStep(responseIssues[0].step);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return;
+        }
+        throw new Error(result.message || "Unable to submit application");
+      }
       setComplete(true);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to submit your application"); }
     finally { setBusy(false); }
@@ -241,6 +339,8 @@ export function ApplicationForm({ locale, token, continueMode, copy, initialEmai
   if (complete) return <section className="start-card"><div className="form-card completion"><div className="completion-icon">✓</div><h2>{copy.successTitle}</h2><p>{copy.successText}</p></div></section>;
 
   const helpers = [t.personalHelp, t.educationHelp, t.teachingHelp, t.experienceHelp, t.readinessHelp, t.reviewHelp];
+  const visibleIssues = validationIssues.filter((issue) => issue.step === step);
+  const hasIssue = (field: string) => visibleIssues.some((issue) => issue.field === field);
 
   return <div className="application-layout">
     <aside className="application-sidebar"><h1>{copy.title}</h1><p>{copy.subtitle}</p><div className="progress-track"><div className="progress-value" style={{ width: `${progress}%` }} /></div>
@@ -248,52 +348,53 @@ export function ApplicationForm({ locale, token, continueMode, copy, initialEmai
     </aside>
     <section className="form-card">
       <div className="form-heading"><p>{copy.step} {step + 1} / {sections.length}</p><h2>{sections[step]}</h2><small>{helpers[step]}</small></div>
+      {visibleIssues.length > 0 && <div className="form-message error validation-summary" role="alert"><strong>{locale === "en" ? "Please review these fields:" : "يرجى مراجعة الحقول التالية:"}</strong><ul>{visibleIssues.map((issue, index) => <li key={`${issue.field}-${index}`}>{issue.message}</li>)}</ul></div>}
       <div className="fields">
         {step === 0 && <>
-          <Field label={t.fullNameEnglish} required><input value={draft.fullNameEnglish} onChange={(e) => update("fullNameEnglish", e.target.value)} /></Field>
-          <Field label={t.fullNameArabic} required><input value={draft.fullNameArabic} onChange={(e) => update("fullNameArabic", e.target.value)} /></Field>
-          <Field label={copy.email as string} required hint={locale === "en" ? "Verified through your secure email link." : "تم التحقق منه من خلال الرابط الآمن المرسل إلى بريدك."}><input value={draft.email || email} readOnly className="verified-input" /></Field>
-          <Field label={t.phone} required><input type="tel" value={draft.phone} onChange={(e) => update("phone", e.target.value)} /></Field>
-          <Field label={t.country} required><select value={draft.country} onChange={(e) => { update("country", e.target.value); update("city", ""); if (e.target.value === "EG" && !draft.timezone) update("timezone", "Africa/Cairo"); }}><option value="">{t.select}</option>{countries.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></Field>
-          <Field label={t.city} required>{draft.country === "EG" ? <select value={draft.city} onChange={(e) => update("city", e.target.value)}><option value="">{t.select}</option>{EGYPT_GOVERNORATES.map((item) => <option value={item.value} key={item.value}>{optionLabel(item, locale)}</option>)}</select> : <input value={draft.city} onChange={(e) => update("city", e.target.value)} />}</Field>
-          <Field label={t.timezone} required><select value={draft.timezone} onChange={(e) => update("timezone", e.target.value)}><option value="">{t.select}</option>{timeZones.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></Field>
-          <Field label={t.gender} required><select value={draft.gender} onChange={(e) => update("gender", e.target.value)}><option value="">{t.select}</option><option value="male">{t.male}</option><option value="female">{t.female}</option></select></Field>
-          <label className="choice field full"><input type="checkbox" checked={draft.over18} onChange={(e) => update("over18", e.target.checked)} />{t.over18}</label>
+          <Field label={t.fullNameEnglish} required error={hasIssue("fullNameEnglish")}><input value={draft.fullNameEnglish} onChange={(e) => update("fullNameEnglish", e.target.value)} /></Field>
+          <Field label={t.fullNameArabic} required error={hasIssue("fullNameArabic")}><input value={draft.fullNameArabic} onChange={(e) => update("fullNameArabic", e.target.value)} /></Field>
+          <Field label={copy.email as string} required error={hasIssue("email")} hint={locale === "en" ? "Verified through your secure email link." : "تم التحقق منه من خلال الرابط الآمن المرسل إلى بريدك."}><input value={draft.email || email} readOnly className="verified-input" /></Field>
+          <Field label={t.phone} required error={hasIssue("phone")}><input type="tel" value={draft.phone} onChange={(e) => update("phone", e.target.value)} /></Field>
+          <Field label={t.country} required error={hasIssue("country")}><select value={draft.country} onChange={(e) => { update("country", e.target.value); update("city", ""); if (e.target.value === "EG" && !draft.timezone) update("timezone", "Africa/Cairo"); }}><option value="">{t.select}</option>{countries.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></Field>
+          <Field label={t.city} required error={hasIssue("city")}>{draft.country === "EG" ? <select value={draft.city} onChange={(e) => update("city", e.target.value)}><option value="">{t.select}</option>{EGYPT_GOVERNORATES.map((item) => <option value={item.value} key={item.value}>{optionLabel(item, locale)}</option>)}</select> : <input value={draft.city} onChange={(e) => update("city", e.target.value)} />}</Field>
+          <Field label={t.timezone} required error={hasIssue("timezone")}><select value={draft.timezone} onChange={(e) => update("timezone", e.target.value)}><option value="">{t.select}</option>{timeZones.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}</select></Field>
+          <Field label={t.gender} required error={hasIssue("gender")}><select value={draft.gender} onChange={(e) => update("gender", e.target.value)}><option value="">{t.select}</option><option value="male">{t.male}</option><option value="female">{t.female}</option></select></Field>
+          <label className={`choice field full${hasIssue("over18") ? " invalid" : ""}`}><input type="checkbox" checked={draft.over18} onChange={(e) => update("over18", e.target.checked)} />{t.over18}</label>
         </>}
         {step === 1 && <>
-          <Field label={t.azharStatus} required><select value={draft.azharStatus} onChange={(e) => update("azharStatus", e.target.value)}><option value="">{t.select}</option><option value="graduate">{t.graduate}</option><option value="student">{t.student}</option><option value="other">{t.none}</option></select></Field>
-          <Field label={t.institution} required>{draft.country === "EG" ? <select value={draft.institution} onChange={(e) => update("institution", e.target.value)}><option value="">{t.select}</option>{EGYPT_UNIVERSITIES.map((item) => <option value={item.value} key={item.value}>{optionLabel(item, locale)}</option>)}<option value="other">{locale === "en" ? "Other university or institute" : "جامعة أو معهد آخر"}</option></select> : <input value={draft.institution} onChange={(e) => update("institution", e.target.value)} />}</Field>
-          {draft.institution === "other" && <Field label={t.institutionOther} required><input value={draft.institutionOther} onChange={(e) => update("institutionOther", e.target.value)} /></Field>}
+          <Field label={t.azharStatus} required error={hasIssue("azharStatus")}><select value={draft.azharStatus} onChange={(e) => update("azharStatus", e.target.value)}><option value="">{t.select}</option><option value="graduate">{t.graduate}</option><option value="student">{t.student}</option><option value="other">{t.none}</option></select></Field>
+          <Field label={t.institution} required error={hasIssue("institution")}>{draft.country === "EG" ? <select value={draft.institution} onChange={(e) => update("institution", e.target.value)}><option value="">{t.select}</option>{EGYPT_UNIVERSITIES.map((item) => <option value={item.value} key={item.value}>{optionLabel(item, locale)}</option>)}<option value="other">{locale === "en" ? "Other university or institute" : "جامعة أو معهد آخر"}</option></select> : <input value={draft.institution} onChange={(e) => update("institution", e.target.value)} />}</Field>
+          {draft.institution === "other" && <Field label={t.institutionOther} required error={hasIssue("institutionOther")}><input value={draft.institutionOther} onChange={(e) => update("institutionOther", e.target.value)} /></Field>}
           <Field label={t.faculty}><input value={draft.faculty} onChange={(e) => update("faculty", e.target.value)} /></Field>
-          <Field label={t.qualification} required><input value={draft.qualification} onChange={(e) => update("qualification", e.target.value)} /></Field>
+          <Field label={t.qualification} required error={hasIssue("qualification")}><input value={draft.qualification} onChange={(e) => update("qualification", e.target.value)} /></Field>
           <Field label={t.graduationYear}><select value={draft.graduationYear} onChange={(e) => update("graduationYear", e.target.value)}><option value="">{t.select}</option><option value="not_graduated">{locale === "en" ? "Not graduated yet" : "لم أتخرج بعد"}</option>{graduationYears.map((year) => <option value={year} key={year}>{year}</option>)}</select></Field>
-          <Field label={t.hasIjazah} required><select value={draft.hasIjazah} onChange={(e) => update("hasIjazah", e.target.value)}><option value="">{t.select}</option><option value="yes">{t.yes}</option><option value="no">{t.no}</option></select></Field>
+          <Field label={t.hasIjazah} required error={hasIssue("hasIjazah")}><select value={draft.hasIjazah} onChange={(e) => update("hasIjazah", e.target.value)}><option value="">{t.select}</option><option value="yes">{t.yes}</option><option value="no">{t.no}</option></select></Field>
           {draft.hasIjazah === "yes" && <Field label={t.ijazahDetails} full><textarea value={draft.ijazahDetails} onChange={(e) => update("ijazahDetails", e.target.value)} /></Field>}
         </>}
         {step === 2 && <>
-          <Field label={t.specializations} required full><div className="choice-grid">{[["quran", t.quran], ["tajweed", t.tajweed], ["memorization", t.memorization], ["qiraat", t.qiraat], ["noor", t.noor], ["arabic", t.arabic], ["islamic", t.islamic]].map(([value, label]) => <label className="choice" key={value}><input type="checkbox" checked={draft.specializations.includes(value)} onChange={() => toggle("specializations", value)} />{label}</label>)}</div></Field>
-          <Field label={t.ageGroups} required full><div className="choice-grid">{[["children", t.children], ["teens", t.teens], ["adults", t.adults]].map(([value, label]) => <label className="choice" key={value}><input type="checkbox" checked={draft.ageGroups.includes(value)} onChange={() => toggle("ageGroups", value)} />{label}</label>)}</div></Field>
-          <Field label={t.teachingLanguages} required full><div className="language-list">{TEACHING_LANGUAGES.map((language) => { const skill = draft.teachingLanguages.find((item) => item.language === language.value); return <div className={`language-row${skill ? " selected" : ""}`} key={language.value}><label className="choice"><input type="checkbox" checked={Boolean(skill)} onChange={() => toggleLanguage(language.value)} />{optionLabel(language, locale)}</label>{skill && <><select aria-label={t.languageLevel} value={skill.level} onChange={(e) => updateLanguage(language.value, { level: e.target.value })}><option value="">{t.languageLevel}</option>{LANGUAGE_LEVELS.map((level) => <option value={level.value} key={level.value}>{optionLabel(level, locale)}</option>)}</select>{language.value === "other" && <input aria-label={t.otherLanguage} placeholder={t.otherLanguage} value={skill.otherLanguage || ""} onChange={(e) => updateLanguage(language.value, { otherLanguage: e.target.value })} />}</>}</div>; })}</div></Field>
+          <Field label={t.specializations} required full error={hasIssue("specializations")}><div className="choice-grid">{[["quran", t.quran], ["tajweed", t.tajweed], ["memorization", t.memorization], ["qiraat", t.qiraat], ["noor", t.noor], ["arabic", t.arabic], ["islamic", t.islamic]].map(([value, label]) => <label className="choice" key={value}><input type="checkbox" checked={draft.specializations.includes(value)} onChange={() => toggle("specializations", value)} />{label}</label>)}</div></Field>
+          <Field label={t.ageGroups} required full error={hasIssue("ageGroups")}><div className="choice-grid">{[["children", t.children], ["teens", t.teens], ["adults", t.adults]].map(([value, label]) => <label className="choice" key={value}><input type="checkbox" checked={draft.ageGroups.includes(value)} onChange={() => toggle("ageGroups", value)} />{label}</label>)}</div></Field>
+          <Field label={t.teachingLanguages} required full error={hasIssue("teachingLanguages")}><div className="language-list">{TEACHING_LANGUAGES.map((language) => { const skill = draft.teachingLanguages.find((item) => item.language === language.value); return <div className={`language-row${skill ? " selected" : ""}`} key={language.value}><label className="choice"><input type="checkbox" checked={Boolean(skill)} onChange={() => toggleLanguage(language.value)} />{optionLabel(language, locale)}</label>{skill && <><select aria-label={t.languageLevel} value={skill.level} onChange={(e) => updateLanguage(language.value, { level: e.target.value })}><option value="">{t.languageLevel}</option>{LANGUAGE_LEVELS.map((level) => <option value={level.value} key={level.value}>{optionLabel(level, locale)}</option>)}</select>{language.value === "other" && <input aria-label={t.otherLanguage} placeholder={t.otherLanguage} value={skill.otherLanguage || ""} onChange={(e) => updateLanguage(language.value, { otherLanguage: e.target.value })} />}</>}</div>; })}</div></Field>
         </>}
         {step === 3 && <>
-          <Field label={t.yearsExperience} required><input type="number" min="0" max="60" value={draft.yearsExperience} onChange={(e) => update("yearsExperience", e.target.value)} /></Field>
-          <Field label={t.onlineExperience} required full><textarea value={draft.onlineExperience} onChange={(e) => update("onlineExperience", e.target.value)} /></Field>
+          <Field label={t.yearsExperience} required error={hasIssue("yearsExperience")}><input type="number" min="0" max="60" value={draft.yearsExperience} onChange={(e) => update("yearsExperience", e.target.value)} /></Field>
+          <Field label={t.onlineExperience} required full error={hasIssue("onlineExperience")}><textarea value={draft.onlineExperience} onChange={(e) => update("onlineExperience", e.target.value)} /></Field>
           <Field label={t.previousWork} full><textarea value={draft.previousWork} onChange={(e) => update("previousWork", e.target.value)} /></Field>
-          <Field label={t.motivation} required full><textarea value={draft.motivation} onChange={(e) => update("motivation", e.target.value)} /></Field>
-          <Field label={t.childScenario} required full><textarea value={draft.childScenario} onChange={(e) => update("childScenario", e.target.value)} /></Field>
+          <Field label={t.motivation} required full error={hasIssue("motivation")}><textarea value={draft.motivation} onChange={(e) => update("motivation", e.target.value)} /></Field>
+          <Field label={t.childScenario} required full error={hasIssue("childScenario")}><textarea value={draft.childScenario} onChange={(e) => update("childScenario", e.target.value)} /></Field>
         </>}
         {step === 4 && <>
-          <Field label={t.device} required><select value={draft.device} onChange={(e) => update("device", e.target.value)}><option value="">{t.select}</option><option value="desktop">{locale === "en" ? "Desktop computer" : "حاسوب مكتبي"}</option><option value="laptop">{locale === "en" ? "Laptop" : "حاسوب محمول"}</option><option value="tablet">{locale === "en" ? "Tablet" : "جهاز لوحي"}</option><option value="smartphone">{locale === "en" ? "Smartphone" : "هاتف ذكي"}</option><option value="other">{locale === "en" ? "Other" : "أخرى"}</option></select></Field>
-          {draft.device === "other" && <Field label={t.deviceOther} required><input value={draft.deviceOther} onChange={(e) => update("deviceOther", e.target.value)} /></Field>}
-          <Field label={t.internet} required><select value={draft.internet} onChange={(e) => update("internet", e.target.value)}><option value="">{t.select}</option><option value="fiber">{locale === "en" ? "Fiber" : "ألياف ضوئية"}</option><option value="vdsl">VDSL / DSL</option><option value="fixed-wireless">{locale === "en" ? "Fixed wireless" : "إنترنت لاسلكي ثابت"}</option><option value="mobile-data">{locale === "en" ? "Mobile data" : "بيانات الهاتف"}</option><option value="other">{locale === "en" ? "Other" : "أخرى"}</option></select></Field>
-          <Field label={t.internetBackup} required><select value={draft.internetBackup} onChange={(e) => update("internetBackup", e.target.value)}><option value="">{t.select}</option><option value="mobile-data">{locale === "en" ? "Mobile data" : "بيانات الهاتف"}</option><option value="second-line">{locale === "en" ? "Second fixed line" : "خط إنترنت ثابت ثانٍ"}</option><option value="portable-router">{locale === "en" ? "Portable router" : "راوتر متنقل"}</option><option value="other">{locale === "en" ? "Other available backup" : "بديل آخر متاح"}</option><option value="none">{locale === "en" ? "No backup connection" : "لا يوجد اتصال بديل"}</option></select></Field>
+          <Field label={t.device} required error={hasIssue("device")}><select value={draft.device} onChange={(e) => update("device", e.target.value)}><option value="">{t.select}</option><option value="desktop">{locale === "en" ? "Desktop computer" : "حاسوب مكتبي"}</option><option value="laptop">{locale === "en" ? "Laptop" : "حاسوب محمول"}</option><option value="tablet">{locale === "en" ? "Tablet" : "جهاز لوحي"}</option><option value="smartphone">{locale === "en" ? "Smartphone" : "هاتف ذكي"}</option><option value="other">{locale === "en" ? "Other" : "أخرى"}</option></select></Field>
+          {draft.device === "other" && <Field label={t.deviceOther} required error={hasIssue("deviceOther")}><input value={draft.deviceOther} onChange={(e) => update("deviceOther", e.target.value)} /></Field>}
+          <Field label={t.internet} required error={hasIssue("internet")}><select value={draft.internet} onChange={(e) => update("internet", e.target.value)}><option value="">{t.select}</option><option value="fiber">{locale === "en" ? "Fiber" : "ألياف ضوئية"}</option><option value="vdsl">VDSL / DSL</option><option value="fixed-wireless">{locale === "en" ? "Fixed wireless" : "إنترنت لاسلكي ثابت"}</option><option value="mobile-data">{locale === "en" ? "Mobile data" : "بيانات الهاتف"}</option><option value="other">{locale === "en" ? "Other" : "أخرى"}</option></select></Field>
+          <Field label={t.internetBackup} required error={hasIssue("internetBackup")}><select value={draft.internetBackup} onChange={(e) => update("internetBackup", e.target.value)}><option value="">{t.select}</option><option value="mobile-data">{locale === "en" ? "Mobile data" : "بيانات الهاتف"}</option><option value="second-line">{locale === "en" ? "Second fixed line" : "خط إنترنت ثابت ثانٍ"}</option><option value="portable-router">{locale === "en" ? "Portable router" : "راوتر متنقل"}</option><option value="other">{locale === "en" ? "Other available backup" : "بديل آخر متاح"}</option><option value="none">{locale === "en" ? "No backup connection" : "لا يوجد اتصال بديل"}</option></select></Field>
           <label className="choice field full"><input type="checkbox" checked={draft.teachingSpace} onChange={(e) => update("teachingSpace", e.target.checked)} />{t.teachingSpace}</label>
           <Field label={t.videoTools} full><div className="choice-grid">{["Zoom", "Google Meet", "Digital whiteboard", "Screen sharing"].map((value) => <label className="choice" key={value}><input type="checkbox" checked={draft.videoTools.includes(value)} onChange={() => toggle("videoTools", value)} />{value}</label>)}</div></Field>
-          <Field label={t.weeklyHours} required><input type="number" min="1" max="80" value={draft.weeklyHours} onChange={(e) => update("weeklyHours", e.target.value)} /></Field>
-          <Field label={t.earliestStart} required><input type="date" value={draft.earliestStart} onChange={(e) => update("earliestStart", e.target.value)} /></Field>
-          <Field label={t.availability} required full hint={draft.timezone ? `${locale === "en" ? "All times use" : "جميع المواعيد حسب"}: ${draft.timezone}` : undefined}><div className="availability-list">{WEEKDAYS.map((day) => { const slot = draft.availability.find((item) => item.day === day.value)!; return <div className={`availability-row${slot.enabled ? " selected" : ""}`} key={day.value}><label className="choice"><input type="checkbox" checked={slot.enabled} onChange={(e) => updateAvailability(day.value, { enabled: e.target.checked })} />{optionLabel(day, locale)}</label><label><span>{locale === "en" ? "From" : "من"}</span><input type="time" value={slot.from} disabled={!slot.enabled} onChange={(e) => updateAvailability(day.value, { from: e.target.value })} /></label><label><span>{locale === "en" ? "To" : "إلى"}</span><input type="time" value={slot.to} disabled={!slot.enabled} onChange={(e) => updateAvailability(day.value, { to: e.target.value })} /></label></div>; })}</div></Field>
+          <Field label={t.weeklyHours} required error={hasIssue("weeklyHours")}><input type="number" min="1" max="80" value={draft.weeklyHours} onChange={(e) => update("weeklyHours", e.target.value)} /></Field>
+          <Field label={t.earliestStart} required error={hasIssue("earliestStart")}><input type="date" value={draft.earliestStart} onChange={(e) => update("earliestStart", e.target.value)} /></Field>
+          <Field label={t.availability} required full error={hasIssue("availability")} hint={draft.timezone ? `${locale === "en" ? "All times use" : "جميع المواعيد حسب"}: ${draft.timezone}` : undefined}><div className="availability-list">{WEEKDAYS.map((day) => { const slot = draft.availability.find((item) => item.day === day.value)!; return <div className={`availability-row${slot.enabled ? " selected" : ""}`} key={day.value}><label className="choice"><input type="checkbox" checked={slot.enabled} onChange={(e) => updateAvailability(day.value, { enabled: e.target.checked })} />{optionLabel(day, locale)}</label><label><span>{locale === "en" ? "From" : "من"}</span><input type="time" value={slot.from} disabled={!slot.enabled} onChange={(e) => updateAvailability(day.value, { from: e.target.value })} /></label><label><span>{locale === "en" ? "To" : "إلى"}</span><input type="time" value={slot.to} disabled={!slot.enabled} onChange={(e) => updateAvailability(day.value, { to: e.target.value })} /></label></div>; })}</div></Field>
           <Field label={t.videoUrl} full><input type="url" value={draft.videoUrl} onChange={(e) => update("videoUrl", e.target.value)} placeholder="https://" /></Field>
-          <Field label={t.additionalLinks} full><div className="links-list">{draft.links.map((link, index) => <div className="link-row" key={index}><select aria-label={t.linkType} value={link.type} onChange={(e) => updateLink(index, { type: e.target.value })}><option value="cv">{locale === "en" ? "CV / résumé" : "السيرة الذاتية"}</option><option value="certificates">{locale === "en" ? "Certificates" : "الشهادات"}</option><option value="portfolio">{locale === "en" ? "Portfolio" : "معرض الأعمال"}</option><option value="cloud">{locale === "en" ? "Google Drive / cloud folder" : "جوجل درايف أو مجلد سحابي"}</option><option value="linkedin">LinkedIn</option><option value="other">{locale === "en" ? "Other" : "أخرى"}</option></select><input type="url" aria-label={t.linkUrl} value={link.url} onChange={(e) => updateLink(index, { url: e.target.value })} placeholder="https://" /><button className="remove-link" type="button" onClick={() => removeLink(index)}>{t.remove}</button></div>)}<button className="button button-light add-link" type="button" onClick={addLink}>+ {t.addLink}</button></div></Field>
+          <Field label={t.additionalLinks} full error={hasIssue("links")}><div className="links-list">{draft.links.map((link, index) => <div className="link-row" key={index}><select aria-label={t.linkType} value={link.type} onChange={(e) => updateLink(index, { type: e.target.value })}><option value="cv">{locale === "en" ? "CV / résumé" : "السيرة الذاتية"}</option><option value="certificates">{locale === "en" ? "Certificates" : "الشهادات"}</option><option value="portfolio">{locale === "en" ? "Portfolio" : "معرض الأعمال"}</option><option value="cloud">{locale === "en" ? "Google Drive / cloud folder" : "جوجل درايف أو مجلد سحابي"}</option><option value="linkedin">LinkedIn</option><option value="other">{locale === "en" ? "Other" : "أخرى"}</option></select><input type="url" aria-label={t.linkUrl} value={link.url} onChange={(e) => updateLink(index, { url: e.target.value })} placeholder="https://" /><button className="remove-link" type="button" onClick={() => removeLink(index)}>{t.remove}</button></div>)}<button className="button button-light add-link" type="button" onClick={addLink}>+ {t.addLink}</button></div></Field>
         </>}
         {step === 5 && <>
           <div className="field full"><div className="form-message success">{locale === "en" ? `Application for ${draft.fullNameEnglish || "applicant"} · ${draft.email || email}` : `طلب المتقدم ${draft.fullNameArabic || ""} · ${draft.email || email}`}</div></div>

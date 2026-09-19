@@ -61,8 +61,15 @@ export async function POST(request: NextRequest) {
   try {
     const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
     if (!token) return NextResponse.json({ message: "Your secure link is missing or expired." }, { status: 401 });
-    const parsed = submissionSchema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ message: "Please complete all required fields before submitting." }, { status: 400 });
+    const body = await request.json();
+    const parsed = submissionSchema.safeParse(body);
+    if (!parsed.success) {
+      const fields = [...new Set(parsed.error.issues.map((issue) => String(issue.path[1] || "application")))];
+      return NextResponse.json({
+        message: body?.locale === "ar" ? "يرجى مراجعة الحقول الموضحة وإكمالها قبل الإرسال." : "Please review the highlighted fields before submitting.",
+        fields
+      }, { status: 400 });
+    }
     const application = await submitApplication(token, parsed.data.data, parsed.data.locale);
     if (!application) return NextResponse.json({ message: "This application has already been submitted or the link has expired." }, { status: 409 });
     await sendApplicationConfirmation({ email: application.email, locale: parsed.data.locale, reference: application.reference_number });

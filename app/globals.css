@@ -206,6 +206,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 .field textarea { min-height: 120px; resize: vertical; line-height: 1.65; }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--green-700); box-shadow: 0 0 0 4px rgba(29, 112, 84, .1); }
+.field.invalid > input, .field.invalid > select, .field.invalid > textarea { border-color: #c55757; box-shadow: 0 0 0 3px rgba(197, 87, 87, .12); }
+.field.invalid .choice-grid, .field.invalid .language-list, .field.invalid .availability-list, .field.invalid .links-list { padding: 6px; outline: 2px solid #d78383; outline-offset: 2px; border-radius: 12px; }
+.field.invalid > label, .field.invalid > .fieldset-label { color: #8a3030; }
 .field .verified-input { border-color: #9bc8b6; color: var(--green-800); background: #f2f8f5; cursor: default; }
 .field-hint { color: var(--muted); font-size: 11px; line-height: 1.55; }
 .choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -238,6 +241,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .form-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 34px; padding-top: 22px; border-top: 1px solid var(--line); }
 .form-message { margin: 20px 0 0; padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; }
 .form-message.error { color: #7a2727; background: #fae9e9; }
+.validation-summary { margin-top: 24px; border: 1px solid #edb7b7; }
+.validation-summary strong { display: block; margin-bottom: 7px; }
+.validation-summary ul { margin: 0; padding-inline-start: 20px; }
+.validation-summary li + li { margin-top: 4px; }
 .form-message.success { color: #14553f; background: #e3f2eb; }
 .start-card { max-width: 650px; margin: 70px auto; }
 .start-card .form-card { min-height: auto; }
